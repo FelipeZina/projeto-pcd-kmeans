@@ -73,7 +73,10 @@ static void write_centroids_csv(const char *path, const double *C, int K){
 /* assignment: para cada X[i], encontra c com menor (X[i]-C[c])^2 */
 static double assignment_step_1d(const double *X, const double *C, int *assign, int N, int K){
     double sse = 0.0;
-    #pragma omp parallel for reduction(+:sse)
+#pragma omp parallel for reduction(+:sse)
+//pragma omp parallel for reduction(+:sse) schedule(static,1000)
+//#pragma omp parallel for reduction(+:sse) schedule(dynamic)
+
     for(int i=0;i<N;i++){
         int best = -1;
         double bestd = 1e300;   
@@ -92,7 +95,7 @@ static double assignment_step_1d(const double *X, const double *C, int *assign, 
    se cluster vazio, copia X[0] (estratégia naive) */
 
    /*Opção B:
-   
+
    #pragma omp parallel for
 for(int i=0; i<N; i++){
     int a = assign[i];
