@@ -1,27 +1,37 @@
 # Versão Sequencial (Baseline) (`/serial`)
 
-Esta pasta contém o código-fonte da implementação sequencial (ou *naive*) do algoritmo K-Means, conforme fornecido.
+Esta pasta contém os códigos-fonte das implementações sequenciais do K-Means, que servem como **baseline** (ponto de referência) para a avaliação de desempenho das versões paralelas.
 
-Este código serve como **baseline** (Etapa 0) para a avaliação de desempenho. O tempo de execução deste programa é a referência (`Tempo_Serial`) usada para calcular o *speedup* das versões paralelas (OpenMP, CUDA, MPI).
+Existem duas versões do baseline para garantir uma comparação de desempenho justa ("maçãs com maçãs").
 
-O código original `kmeans_1d_naive.c` utiliza `double` (precisão de 64 bits) para todos os cálculos.
+## 1. `kmeans_1d_naive.c` (Baseline para OpenMP)
 
-## Como Compilar
+Este é o código-fonte original fornecido (Etapa 0), que utiliza `double` (precisão de 64 bits) para todos os cálculos.
 
-Para compilar o código, use o GCC. A flag `-O2` é recomendada para uma otimização justa de baseline, e `-lm` é necessária para a biblioteca matemática (`math.h`).
+Este código é o baseline oficial para a **Etapa 1 (OpenMP)**, que também foi implementada usando `double`.
 
+### Como Compilar
 ```bash
-gcc -O2 -std=c99 kmeans_1d_naive.c -o kmeans_1d_naive -lm
+gcc -O2 -std=c99 kmeans_1d_naive.c -o serial_baseline_double -lm
+```
+### Como Executar
+```bash
+./serial_baseline_double ../dados/grande_dados.csv ../dados/grande_centroides.csv 50 0.0001
 ```
 
-## Como Executar
+---
 
-O programa espera pelo menos os dois arquivos de entrada. Os argumentos seguintes são opcionais.
+## 2. `kmeans_1d_serial_float.c` (Baseline para CUDA)
 
-**Formato:**
-`./kmeans_1d_naive <arq_dados> <arq_centroides> [max_iter] [eps] [outAssign] [outCentroid]`
+Esta é uma versão modificada do código sequencial, convertida para usar `float` (precisão de 32 bits).
 
-**Exemplo:**
+Como a implementação da **Etapa 2 (CUDA)** foi otimizada para `float` (para melhor desempenho e compatibilidade com a GPU), este arquivo serve como o **baseline correto** para uma comparação justa de desempenho (`float` vs `float`).
+
+### Como Compilar
 ```bash
-./kmeans_1d_naive ../dados/dados.csv ../dados/centroides_iniciais.csv 50 0.0001
+gcc -O2 -std=c99 kmeans_1d_serial_float.c -o serial_baseline_float -lm
+```
+### Como Executar
+```bash
+./serial_baseline_float ../dados/grande_dados.csv ../dados/grande_centroides.csv 50 0.0001
 ```
