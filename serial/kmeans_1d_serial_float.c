@@ -139,7 +139,7 @@ int main(int argc, char **argv){
 
     int N=0, K=0;
     float *X = read_csv_1col(pathX, &N);
-    float *C = read_csv_col(pathC, &K);
+    float *C = read_csv_1col(pathC, &K);
     int *assign = (int*)malloc((size_t)N * sizeof(int));
     if(!assign){ fprintf(stderr,"Sem memoria para assign\n"); free(X); free(C); exit(1); }
 
