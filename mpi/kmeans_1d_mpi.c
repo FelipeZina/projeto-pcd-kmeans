@@ -13,7 +13,6 @@
 #include <math.h>
 #include <mpi.h> // Biblioteca MPI
 
-/* --- Funções de Leitura de Arquivo (Apenas Rank 0 usa) --- */
 static int count_rows(const char *path){
     FILE *f = fopen(path, "r");
     if(!f){ return 0; }
@@ -113,14 +112,11 @@ int main(int argc, char **argv){
         C = (double*)malloc(K * sizeof(double));
     }
 
-    // --- DISTRIBUIÇÃO DOS PONTOS (SCATTER) ---
-    // Precisamos dividir N_global pontos entre n_procs processos.
-    // Usamos MPI_Scatterv para lidar com divisões não exatas.
+
     
     int *sendcounts = (int*)malloc(n_procs * sizeof(int));
     int *displs = (int*)malloc(n_procs * sizeof(int));
     
-    // Calcula quantos pontos cada processo recebe
     int rem = N_global % n_procs;
     int sum = 0;
     for(int i = 0; i < n_procs; i++) {
@@ -130,25 +126,20 @@ int main(int argc, char **argv){
         sum += sendcounts[i];
     }
 
-    // Número de pontos locais deste processo específico
     int N_local = sendcounts[rank];
     double *X_local = (double*)malloc(N_local * sizeof(double));
 
-    // Espalha os dados! (Rank 0 envia pedaços de X_global para X_local de cada um)
     MPI_Scatterv(X_global, sendcounts, displs, MPI_DOUBLE, 
                  X_local, N_local, MPI_DOUBLE, 
                  0, MPI_COMM_WORLD);
 
-    // Arrays auxiliares locais para o cálculo
     int *assign_local = (int*)malloc(N_local * sizeof(int));
     double *sum_local = (double*)malloc(K * sizeof(double));
     int *cnt_local = (int*)malloc(K * sizeof(int));
     
-    // Arrays globais para redução (usados para atualizar C)
     double *sum_global = (double*)malloc(K * sizeof(double));
     int *cnt_global = (int*)malloc(K * sizeof(int));
 
-    // Medição de tempo
     double comm_time_total = 0.0;
     double start_time = MPI_Wtime();
 
@@ -156,25 +147,18 @@ int main(int argc, char **argv){
     double sse_global = 0.0;
     int it = 0;
 
-    // --- LOOP DO K-MEANS ---
     for(it = 0; it < max_iter; it++){
         
-        // 1. Broadcast dos Centroides (Passo 1 do enunciado)
-        // Garante que todos tenham o C atualizado antes de começar
-        // (Embora Allreduce no final já atualize, o enunciado pede explicitamente)
         MPI_Bcast(C, K, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-        // 2. Assignment Local (Passo 2 do enunciado)
         double sse_local = 0.0;
         
-        // Zera acumuladores locais
         for(int c=0; c<K; c++) { sum_local[c] = 0.0; cnt_local[c] = 0; }
 
         for(int i=0; i<N_local; i++){
             double best_dist = 1e300;
             int best_cluster = -1;
             
-            // Encontra cluster mais próximo
             for(int c=0; c<K; c++){
                 double diff = X_local[i] - C[c];
                 double d = diff*diff;
@@ -187,25 +171,19 @@ int main(int argc, char **argv){
             assign_local[i] = best_cluster;
             sse_local += best_dist;
             
-            // Acumula para o Update (Opção A do enunciado OpenMP adaptada para MPI)
             sum_local[best_cluster] += X_local[i];
             cnt_local[best_cluster]++;
         }
 
-        // 3. Redução Global (Passo 3 do enunciado)
         double t_comm_start = MPI_Wtime();
 
-        // A) Soma SSE_local -> SSE_global (Reduce para Rank 0 verificar convergência)
         MPI_Reduce(&sse_local, &sse_global, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
-        // B) Soma sum_local e cnt_local de TODOS -> TODOS (Allreduce)
-        // Isso permite que TODOS atualizem o C simultaneamente
         MPI_Allreduce(sum_local, sum_global, K, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
         MPI_Allreduce(cnt_local, cnt_global, K, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 
         comm_time_total += (MPI_Wtime() - t_comm_start);
 
-        // C) Atualizar C (Cada processo atualiza C com resultados globais)
         for(int c=0; c<K; c++){
             if(cnt_global[c] > 0)
                 C[c] = sum_global[c] / cnt_global[c];
@@ -213,7 +191,6 @@ int main(int argc, char **argv){
                 C[c] = (rank == 0) ? X_global[0] : 0.0; // Tratamento simplificado
         }
 
-        // 4. Verificação de Convergência (Controlada pelo Rank 0)
         int stop_flag = 0;
         if(rank == 0){
             double rel = fabs(sse_global - prev_sse) / (prev_sse > 0.0 ? prev_sse : 1.0);
@@ -222,7 +199,6 @@ int main(int argc, char **argv){
             prev_sse = sse_global;
         }
         
-        // Avisa a todos se deve parar ou continuar
         MPI_Bcast(&stop_flag, 1, MPI_INT, 0, MPI_COMM_WORLD);
         if(stop_flag) {
             if(rank==0) it++; // conta a última
@@ -234,17 +210,13 @@ int main(int argc, char **argv){
     double total_time = (end_time - start_time) * 1000.0; // ms
     comm_time_total *= 1000.0; // ms
 
-    // --- RESULTADOS FINAIS ---
     if(rank == 0){
         printf("\nK-means 1D (MPI) Finalizado.\n");
         printf("N=%d, K=%d, Procs=%d\n", N_global, K, n_procs);
         printf("Iterações: %d | SSE Final: %.6f\n", it, sse_global);
         printf("Tempo TOTAL: %.2f ms\n", total_time);
         printf("Tempo COMUNICAÇÃO (Reduce/Allreduce): %.2f ms\n", comm_time_total);
-        
-        // Opcional: Salvar CSV final (Rank 0 tem o C final, mas não tem o assign global completo aqui para salvar fácil)
-        // Para salvar 'assign.csv' completo, precisaríamos de MPI_Gatherv, mas o enunciado foca em métricas.
-        // Vamos salvar apenas os centroides.
+
         if(argc > 6) write_centroids_csv(argv[6], C, K);
     }
 
